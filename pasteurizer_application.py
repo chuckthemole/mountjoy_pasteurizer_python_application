@@ -116,10 +116,10 @@ class ArduinoSerialInterface:
             print(f"[ArduinoSerialInterface] Write error: {e}")
 
 
-class SoloPasteurizerApp:
+class MountjoyPasteurizerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Solo Pasteurizer Control")
+        self.root.title("Pasteurizer Control")
         self.root.geometry("850x700")
 
         self.client = None
@@ -396,7 +396,7 @@ class SoloPasteurizerApp:
 
 def main():
     root = tk.Tk()
-    SoloPasteurizerApp(root)
+    MountjoyPasteurizerApp(root)
     root.mainloop()
 
 
