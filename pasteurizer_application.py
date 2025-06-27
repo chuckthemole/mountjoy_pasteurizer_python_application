@@ -11,7 +11,7 @@ import serial.tools.list_ports
 
 
 class WiFiArduinoInterface:
-    def __init__(self, host='127.0.0.1', port=12345):
+    def __init__(self, host='10.1.10.4', port=12345):
         self.host = host
         self.port = port
         self.sock = None
@@ -163,7 +163,7 @@ class MountjoyPasteurizerApp:
                         command=self.toggle_mode).grid(row=0, column=2, sticky="w")
 
         self.wifi_host_entry = ttk.Entry(conn)
-        self.wifi_host_entry.insert(0, "127.0.0.1")
+        self.wifi_host_entry.insert(0, "10.1.10.4")
         self.wifi_port_entry = ttk.Entry(conn, width=6)
         self.wifi_port_entry.insert(0, "12345")
 
