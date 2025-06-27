@@ -11,7 +11,7 @@ import serial.tools.list_ports
 
 
 class WiFiArduinoInterface:
-    def __init__(self, host='10.1.10.4', port=12345):
+    def __init__(self, host='0.0.0.0', port=12345):
         self.host = host
         self.port = port
         self.sock = None
@@ -116,6 +116,26 @@ class ArduinoSerialInterface:
             print(f"[ArduinoSerialInterface] Write error: {e}")
 
 
+def discover_arduinos(timeout=3):
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.settimeout(timeout)
+    sock.bind(("", 8888))  # Port should match Arduino broadcast
+
+    found = set()
+    try:
+        while True:
+            data, addr = sock.recvfrom(1024)
+            msg = data.decode()
+            found.add((msg, addr[0]))
+    except socket.timeout:
+        pass
+    finally:
+        sock.close()
+    return list(found)
+
+
 class MountjoyPasteurizerApp:
     def __init__(self, root):
         self.root = root
@@ -163,7 +183,7 @@ class MountjoyPasteurizerApp:
                         command=self.toggle_mode).grid(row=0, column=2, sticky="w")
 
         self.wifi_host_entry = ttk.Entry(conn)
-        self.wifi_host_entry.insert(0, "10.1.10.4")
+        self.wifi_host_entry.insert(0, "0.0.0.0")
         self.wifi_port_entry = ttk.Entry(conn, width=6)
         self.wifi_port_entry.insert(0, "12345")
 
@@ -173,14 +193,18 @@ class MountjoyPasteurizerApp:
         self.wifi_host_entry.grid(row=1, column=0)
         self.wifi_port_entry.grid(row=1, column=1)
         self.port_combo.grid(row=1, column=0, columnspan=2)
-        self.toggle_mode()
 
-        self.connect_btn = ttk.Button(
-            conn, text="Connect", command=self.toggle_connection)
+        # Dropdown for discovered devices (auto-populated)
+        self.device_combo = ttk.Combobox(conn, state="readonly")
+        self.device_combo.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.device_combo.bind("<<ComboboxSelected>>", self.select_discovered_device)
+
+        self.connect_btn = ttk.Button(conn, text="Connect", command=self.toggle_connection)
         self.connect_btn.grid(row=1, column=2)
-        self.status_label = ttk.Label(
-            conn, text="Disconnected", foreground="red")
+        self.status_label = ttk.Label(conn, text="Disconnected", foreground="red")
         self.status_label.grid(row=1, column=3)
+
+        self.toggle_mode()
 
         temp = ttk.LabelFrame(main, text="Temperatures")
         temp.grid(row=1, column=0, sticky="nsew")
@@ -227,15 +251,22 @@ class MountjoyPasteurizerApp:
         log.grid(row=4, column=0, columnspan=2, sticky="nsew")
         self.log_text = tk.Text(log, height=8)
         self.log_text.pack(expand=True, fill="both")
+        # Schedule auto-discovery after UI setup is complete
+        if self.connection_mode.get() == "wifi":
+            # Schedule device discovery shortly after UI setup finishes
+            self.root.after(100, self.populate_discovered_devices)
+
 
     def toggle_mode(self):
         if self.connection_mode.get() == "wifi":
             self.wifi_host_entry.grid()
             self.wifi_port_entry.grid()
             self.port_combo.grid_remove()
+            self.device_combo.grid()
         else:
             self.wifi_host_entry.grid_remove()
             self.wifi_port_entry.grid_remove()
+            self.device_combo.grid_remove()
             self.port_combo['values'] = self.get_serial_ports()
             if self.port_combo['values']:
                 self.port_combo.set(self.port_combo['values'][0])
@@ -392,6 +423,29 @@ class MountjoyPasteurizerApp:
                     f"Cooling complete - Target temp {self.cool_setpoint.get()}°C reached", event="PROCESS_COMPLETED")
 
             time.sleep(1)
+
+    def populate_discovered_devices(self, repeat=True):
+        self.log("Scanning for devices...", log_to_csv=False)
+        devices = discover_arduinos()
+        display_list = [f"{msg} ({ip})" for msg, ip in devices]
+        self.device_combo['values'] = display_list
+        self.discovered_devices = devices
+        if display_list:
+            self.device_combo.set(display_list[0])
+            self.log(f"Found {len(devices)} device(s)", log_to_csv=False)
+        else:
+            self.log("No devices found.", log_to_csv=False)
+            if repeat:
+                self.root.after(5000, self.populate_discovered_devices)  # Retry after 5 seconds
+
+    def select_discovered_device(self, event=None):
+        selection = self.device_combo.get()
+        for msg, ip in self.discovered_devices:
+            if ip in selection:
+                self.wifi_host_entry.delete(0, tk.END)
+                self.wifi_host_entry.insert(0, ip)
+                break
+        self.toggle_connection()  # Auto-connect after selecting
 
 
 def main():
